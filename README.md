@@ -1,13 +1,21 @@
 # Rillo
 
-An accessible, browser-local college plan for Milpitas Middle College students. Track classes, terms, colleges, professors, meeting times, R40 notes, and degree requirements.
+Rillo is a browser-local registration planner for students taking classes at community colleges. San José City College (SJCC) and Mission College have tailored approval-form labels and official links; other colleges can be entered manually.
 
-Open `index.html` in a browser. No build or account is required. Data is stored in that browser's localStorage; use Export plan to keep a backup.
+Open `index.html` in a browser. No build or account is required. Data stays in that browser's localStorage; export a backup before changing devices or clearing browser storage.
 
-## Degree tracking
+## What it does
 
-Add an AA, AS-T, AA-T, AS, or certificate goal from an official college major sheet. Enter each requirement. Rillo matches exact course codes at the same college and distinguishes completed from planned or in-progress courses. Non-course milestones need manual counselor review. It does not determine degree eligibility, residency, transfer equivalency, GPA, or catalog rights.
+- Track an approval plan by college and term: form status, submission target, submitted date, approved course codes, and personal registration time.
+- Track planned, registered, waitlisted, in-progress, and completed classes with professor, section, days, times, and location.
+- Show a weekly class calendar and a list of registration dates and college deadlines.
+- Show browser notifications when Rillo is open and permission is granted. Download an `.ics` file with reminders for a calendar app that can notify while Rillo is closed.
+- Export and import a Rillo JSON plan. Existing version 1 class records are migrated locally; previous degree data is preserved in exports, but the degree UI has been set aside while registration planning is the focus.
 
-For Milpitas Middle College, the partner is San José City College. See the [SJCC catalog](https://catalog.sjcc.edu/) and [major sheets](https://sjcc.edu/counseling/major-sheets.aspx). The app also supports classes from other colleges.
+## Important limits
 
-Professor links search Rate My Professors; ratings are not stored or represented as verified data.
+Rillo does not read your college account, submit forms, register for classes, verify approvals, or fetch your personal registration time. Enter the time shown in each college's student portal. Browser alerts are **not background push notifications**; they run only while Rillo is open. Importing the calendar file into a device calendar is the available closed-app reminder path. True web push would require a hosted backend, notification subscription, and a reliable scheduled delivery service.
+
+SJCC requires a new R-40 and application for each term and says students may register only for courses listed on the form. Mission uses its own Dual Enrollment Form. Verify your own dates and requirements using the official links in the app.
+
+Professor links search Rate My Professors; ratings are not stored or presented as verified data.

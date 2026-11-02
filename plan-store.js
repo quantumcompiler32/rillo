@@ -127,7 +127,7 @@ const RilloPlanStore = (() => {
     return validate(migrated);
   }
   function load() {
-    for (const [key, legacyVersion] of [[KEY, undefined], ['rillo-plan-v3', 3], ['rillo-plan-v2', 2], ['rillo-plan-v1', 1]]) {
+    for (const [key, legacyVersion] of [[KEY, undefined], ['rillo-plan-v3', undefined], ['rillo-plan-v2', 2], ['rillo-plan-v1', 1]]) {
       const raw = localStorage.getItem(key);
       if (raw !== null) return decode(raw, legacyVersion);
     }

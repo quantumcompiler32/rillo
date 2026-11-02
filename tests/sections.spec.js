@@ -43,6 +43,7 @@ test('future planned class needs no title, units, instructor, or section', async
 async function addOption(page, card, section, preference = 'None', status = 'Considering') {
   await card.getByRole('button', { name: 'Add section option', exact: true }).click();
   const form = page.getByRole('dialog');
+  await expect(form).toHaveAccessibleName('Section option');
   await form.getByLabel('Section identifier', { exact: true }).fill(section);
   await form.getByLabel('Registration identifier', { exact: true }).fill('000123-A');
   await form.getByLabel('Instructor', { exact: true }).fill('Dr Example');
@@ -213,5 +214,47 @@ test('version 3 plans migrate without inventing options or losing exact legacy i
   expect(await backup(page)).toEqual(saved);
   await restore(page, saved);
   await expect(page.locator('#toast')).toHaveText('Plan imported');
+  expect(await backup(page)).toEqual(saved);
+});
+
+test('versionless data at the v3 storage key is rejected rather than silently promoted', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('rillo-plan-v3', JSON.stringify({ classes: [], registrations: [], deadlines: [], degrees: [], transfers: [] }));
+  });
+  await page.goto('/');
+  await expect(page.locator('#planError')).toContainText('version');
+  await expect(page.locator('#planError')).toBeFocused();
+});
+
+test('unknown option details and every reported status remain explicit without changing the planned class', async ({ page }) => {
+  await page.goto('/');
+  const card = await addPlan(page);
+  const before = await backup(page);
+  await card.getByRole('button', { name: 'Add section option', exact: true }).click();
+  await page.getByRole('button', { name: 'Save option', exact: true }).press('Enter');
+  await expect(card).toContainText('Section unknown');
+  await expect(card).toContainText('Registration identifier: unknown · Instructor: not selected yet');
+  for (const status of ['Waitlisted', 'Registered', 'In progress', 'Completed', 'Withdrawn', 'No longer considering']) {
+    await card.getByRole('button', { name: 'Edit option', exact: true }).click();
+    await page.getByRole('dialog').getByRole('combobox', { name: /^Registration status/ }).selectOption(status);
+    await page.getByRole('button', { name: 'Save option', exact: true }).click();
+    await expect(card).toContainText(`None · ${status}`);
+    expect((await backup(page)).classes).toEqual(before.classes);
+  }
+  const saved = await backup(page);
+  await page.evaluate(() => {
+    window.originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = () => { throw new DOMException('Storage full', 'QuotaExceededError'); };
+  });
+  page.once('dialog', d => d.accept());
+  await card.getByRole('button', { name: 'Remove option', exact: true }).click();
+  await expect(page.locator('#planError')).toContainText('not saved');
+  await expect(page.locator('#planError')).toBeFocused();
+  expect(await backup(page)).toEqual(saved);
+  await page.evaluate(() => { Storage.prototype.setItem = window.originalSetItem; });
+  page.once('dialog', d => d.dismiss());
+  await card.getByRole('button', { name: 'Remove option', exact: true }).click();
+  expect(await backup(page)).toEqual(saved);
+  await page.reload();
   expect(await backup(page)).toEqual(saved);
 });

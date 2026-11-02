@@ -1,15 +1,20 @@
-const STORAGE='rillo-plan-v2';
 const DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-function load(){try{const value=JSON.parse(localStorage.getItem(STORAGE));if(value&&Array.isArray(value.classes)&&Array.isArray(value.registrations)&&Array.isArray(value.deadlines))return {...value,degrees:value.degrees||value.legacyDegrees||[],transfers:value.transfers||[]}}catch{}try{const old=JSON.parse(localStorage.getItem('rillo-plan-v1'));if(old&&Array.isArray(old.classes))return {classes:old.classes.map(c=>({...c,meetingDays:[]})),registrations:[],deadlines:[],degrees:old.degrees||[],transfers:[]}}catch{}return {classes:[],registrations:[],deadlines:[],degrees:[],transfers:[]}}
-let plan=load();
+let plan=RilloPlanStore.empty();
+let loadFailed=false;
+function loadPlan(){
+  try{const loaded=RilloPlanStore.load();plan=loaded;loadFailed=false;document.querySelector('#planError').hidden=true;render()}
+  catch(error){loadFailed=true;reportPlanError(`Your saved plan could not be opened. ${error.message}. Your stored data has not been changed. Retry after restoring browser access, or import a valid backup to recover.`)}
+}
 function reportPlanError(message,form){
   const error=form?.querySelector('.plan-error')||document.querySelector('#planError');
+  if(form){error.id=`${form.id}Error`;form.setAttribute('aria-describedby',error.id)}
   error.textContent=message;error.hidden=false;error.focus();
 }
-function save(candidate,form){
-  try{localStorage.setItem(STORAGE,JSON.stringify(candidate))}
-  catch{reportPlanError('Your changes were not saved. Free some browser storage or allow local storage, then try again. Your previous plan is unchanged.',form);return false}
-  plan=candidate;document.querySelector('#planError').hidden=true;render();return true;
+function save(candidate,form,{restoring=false}={}){
+  if(loadFailed&&!restoring){reportPlanError('Your changes were not saved. Recover your saved plan with Retry saved plan or import a valid backup first.',form);return false}
+  try{RilloPlanStore.commit(candidate)}
+  catch(error){reportPlanError(`Your changes were not saved. ${error.message}. Check the data and allow/free browser storage, then try again. Your previous plan is unchanged.`,form);return false}
+  plan=candidate;loadFailed=false;document.querySelector('#planError').hidden=true;render();return true;
 }
 function node(tag,text,className){const x=document.createElement(tag);if(text!==undefined)x.textContent=text;if(className)x.className=className;return x}
 function toast(message){const x=document.querySelector('#toast');x.textContent=message;x.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>x.hidden=true,3500)}
@@ -67,9 +72,19 @@ document.querySelector('#downloadCalendar').onclick=()=>{if(!events().length){to
 document.querySelector('#enableAlerts').onclick=async()=>{if(!('Notification'in window)){toast('Browser alerts are not available here');return}const permission=await Notification.requestPermission();toast(permission==='granted'?'Browser alerts enabled while Rillo is open':'Browser alerts were not enabled');if(permission==='granted')checkAlerts()};
 function checkAlerts(){if(!('Notification'in window)||Notification.permission!=='granted')return;const now=Date.now();let sent;try{sent=JSON.parse(localStorage.getItem('rillo-alerted-v1'))||{}}catch{sent={}}for(const e of events()){const at=new Date(e.at).getTime(),start=at-e.leadDays*86400000;if(now>=start&&now<at&&!sent[e.id+'-'+e.at]){new Notification(e.title,{body:`${e.college} · ${formatDate(e.at)}`});sent[e.id+'-'+e.at]=true}}localStorage.setItem('rillo-alerted-v1',JSON.stringify(sent))}
 setInterval(checkAlerts,60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkAlerts()});
-document.querySelector('#exportButton').onclick=()=>{const blob=new Blob([JSON.stringify({version:2,...plan},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='rillo-plan.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
-document.querySelector('#importInput').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{const value=JSON.parse(await file.text());if(value.version!==2||!Array.isArray(value.classes)||!Array.isArray(value.registrations)||!Array.isArray(value.deadlines))throw Error('Invalid export');if(!confirm('Replace your current plan with this export?'))return;const candidate={classes:value.classes,registrations:value.registrations,deadlines:value.deadlines,degrees:value.degrees||value.legacyDegrees||[],transfers:value.transfers||[]};if(save(candidate))toast('Plan imported')}catch{toast('Choose a valid Rillo export')}finally{e.target.value=''}};
-render();checkAlerts();
+document.querySelector('#exportButton').onclick=()=>{if(loadFailed){reportPlanError('Export is unavailable until your saved plan is recovered. Retry saved plan or import a valid backup.');return}const blob=new Blob([JSON.stringify(plan,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='rillo-plan.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+document.querySelector('#importInput').onchange=async e=>{
+  const file=e.target.files[0];if(!file)return;
+  try{
+    const candidate=RilloPlanStore.decode(await file.text());
+    if(!confirm('Replace your current plan with this export?'))return;
+    if(save(candidate,null,{restoring:true}))toast('Plan imported');
+  }catch(error){reportPlanError(`Could not import this backup. ${error.message}. Choose a supported Rillo JSON backup or correct the reported field. Your previous plan is unchanged.`)}
+  finally{e.target.value=''}
+};
+document.querySelector('#retryPlan').onclick=loadPlan;
+
+render();loadPlan();checkAlerts();
 
 document.querySelector('#courseSearch').addEventListener('input',renderClasses);document.querySelector('#courseStatus').addEventListener('change',renderClasses);
 const sections=[...document.querySelectorAll('main > section[id]')];function navigate(){const id=location.hash.slice(1);const active=sections.some(s=>s.id===id)?id:'classes';sections.forEach(s=>s.hidden=s.id!==active);document.querySelectorAll('nav a').forEach(a=>{if(a.hash==='#'+active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')})}window.addEventListener('hashchange',navigate);navigate();

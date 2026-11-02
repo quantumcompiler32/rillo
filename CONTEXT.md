@@ -7,6 +7,18 @@ Rillo helps a Milpitas Middle College student organize college enrollment and es
 **Course**:
 A college catalog offering identified by a course code and an owning college. It may be offered in many terms and sections.
 
+**Section**:
+A particular offering of a course at its college in a term, identified by the college's section or registration identifier. Its instructor and meeting details may differ from other sections of the same course.
+
+**Section option**:
+A section a student is considering for a planned class. Considering an option does not establish form submission, approval, eligibility, or enrollment.
+
+**Section preference**:
+A student's designation of a section option as preferred or backup. Preference is independent of form progress, enrollment readiness, and registration status.
+
+**Meeting pattern**:
+A section's recurring meeting arrangement with days, times, an applicable date range, and a location or online format. One section may have multiple meeting patterns, such as lecture and lab.
+
 **Planned class**:
 A student's intention to take a course in a particular term. It is not proof of approval, registration, enrollment, or earned credit.
 _Avoid_: Completed course
@@ -35,3 +47,9 @@ A course completed or planned at one college that might satisfy a requirement at
 
 **Transfer articulation**:
 A published agreement describing how a course from one institution applies at another, often for transfer to a university. It is distinct from acceptance toward a community college's own degree.
+
+**Import candidate**:
+An extracted course entry awaiting student review. It is not yet part of the student's saved plan and does not establish enrollment, completion, or earned credit.
+
+**Student-confirmed record**:
+A course record the student has reviewed and accepted into their plan. Confirmation records the student's interpretation of the source; it is not official college verification of its status or applicability.

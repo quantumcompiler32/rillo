@@ -1,9 +1,9 @@
 /* Browser-local confirmed-plan boundary. Kept as a classic script for file:// use. */
 const RilloPlanStore = (() => {
-  const VERSION = 3;
-  const KEY = 'rillo-plan-v3';
-  const collections = ['classes', 'registrations', 'deadlines', 'degrees', 'transfers'];
-  const empty = () => ({ version: VERSION, classes: [], registrations: [], deadlines: [], degrees: [], transfers: [] });
+  const VERSION = 4;
+  const KEY = 'rillo-plan-v4';
+  const collections = ['classes', 'registrations', 'deadlines', 'degrees', 'transfers', 'sectionOptions'];
+  const empty = () => ({ version: VERSION, classes: [], registrations: [], deadlines: [], degrees: [], transfers: [], sectionOptions: [] });
   const invalid = (path, reason) => { throw new Error(`${path}: ${reason}`); };
   const object = (value, path) => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) invalid(path, 'expected a record');
@@ -41,7 +41,8 @@ const RilloPlanStore = (() => {
   };
   const common = { id: required, college: required, term: required, notes: text };
   const rules = {
-    classes: { ...common, code: required, name: text, units, section: text, status: choice(['Planned', 'Registered', 'Waitlisted', 'In progress', 'Completed', 'Withdrawn']), professor: text, location: text, meetingDays: list(choice(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])), startTime: time, endTime: time, days: text, time: text, r40: text },
+    classes: { ...common, code: required, name: text, units, section: text, status: choice(['Planned', 'Registered', 'Waitlisted', 'In progress', 'Completed', 'Withdrawn', 'No longer considering']), professor: text, location: text, meetingDays: list(choice(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])), startTime: time, endTime: time, days: text, time: text, r40: text },
+    sectionOptions: { id: required, plannedClassId: required, section: text, registrationId: text, professor: text, notes: text, preference: choice(['None', 'Preferred', 'Backup']), status: choice(['Considering', 'Waitlisted', 'Registered', 'In progress', 'Completed', 'Withdrawn', 'No longer considering']) },
     registrations: { ...common, approval: choice(['Not started', 'Preparing', 'Waiting for signatures', 'Submitted', 'Approved', 'Needs correction']), registrationAt: datetime, formTarget: date, submittedOn: date, approvedCourses: text },
     deadlines: { ...common, title: required, at: datetime, leadDays: choice(['0', '1', '3', '7', '14', 0, 1, 3, 7, 14]), source: text },
     degrees: { id: required, name: required, type: choice(['AS-T', 'AA', 'AA-T', 'AS', 'Certificate']), college: required, year: required, source: text, requirements: list(required), notes: text },
@@ -49,6 +50,7 @@ const RilloPlanStore = (() => {
   };
   const requiredFields = {
     classes: ['id', 'college', 'term', 'code', 'status'],
+    sectionOptions: ['id', 'plannedClassId', 'preference', 'status'],
     registrations: ['id', 'college', 'term', 'approval'],
     deadlines: ['id', 'college', 'term', 'title', 'at'],
     degrees: ['id', 'college', 'name', 'type', 'year', 'requirements'],
@@ -83,15 +85,26 @@ const RilloPlanStore = (() => {
         if (kind === 'deadlines' && !record.at) invalid(`${path}.at`, 'date and time required');
       });
     }
+    for (const option of plan.sectionOptions) {
+      if (!plan.classes.some(c => c.id === option.plannedClassId)) invalid('sectionOptions.plannedClassId', 'planned class not found');
+    }
+    for (const c of plan.classes) {
+      if (plan.sectionOptions.filter(o => o.plannedClassId === c.id && o.preference === 'Preferred').length > 1) invalid('sectionOptions.preference', 'only one preferred option per planned class');
+    }
     return plan;
   }
   function decode(raw, legacyVersion) {
     const value = JSON.parse(raw);
     object(value, 'Plan');
     const version = value.version === undefined ? legacyVersion : value.version;
-    if (![1, 2, VERSION].includes(version)) invalid('Plan version', 'unsupported; choose a version 1, 2, or 3 Rillo backup');
+    if (![1, 2, 3, VERSION].includes(version)) invalid('Plan version', 'unsupported; choose a version 1, 2, 3, or 4 Rillo backup');
     if (version === VERSION) return validate(value);
-    const allowed = version === 1 ? ['version', 'classes', 'degrees'] : ['version', ...collections, 'legacyDegrees'];
+    if (version === 3) {
+      if (Object.hasOwn(value, 'sectionOptions')) invalid('sectionOptions', 'not supported in version 3');
+      return validate({ ...value, version: VERSION, sectionOptions: [] });
+    }
+    const legacyCollections = collections.filter(kind => kind !== 'sectionOptions');
+    const allowed = version === 1 ? ['version', 'classes', 'degrees'] : ['version', ...legacyCollections, 'legacyDegrees'];
     for (const field of Object.keys(value)) {
       if (!allowed.includes(field)) invalid(field, 'unsupported legacy field; original data has not been changed');
     }
@@ -114,7 +127,7 @@ const RilloPlanStore = (() => {
     return validate(migrated);
   }
   function load() {
-    for (const [key, legacyVersion] of [[KEY, undefined], ['rillo-plan-v2', 2], ['rillo-plan-v1', 1]]) {
+    for (const [key, legacyVersion] of [[KEY, undefined], ['rillo-plan-v3', 3], ['rillo-plan-v2', 2], ['rillo-plan-v1', 1]]) {
       const raw = localStorage.getItem(key);
       if (raw !== null) return decode(raw, legacyVersion);
     }

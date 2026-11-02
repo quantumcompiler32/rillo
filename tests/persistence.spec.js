@@ -97,7 +97,7 @@ test('supported legacy backups preserve history and identifiers across edit, rel
     await restore(page, legacyPlan(version));
     await expect(page.locator('#toast')).toHaveText('Plan imported');
     const saved = await backup(page);
-    expect(saved.version).toBe(3);
+    expect(saved.version).toBe(4);
     expect(saved.classes.map(c => [c.id, c.status, c.section, c.r40, c.notes])).toEqual([
       ['course-completed', 'Completed', '00017', 'Old authorization note', 'Keep this attempt'],
       ['course-withdrawn', 'Withdrawn', undefined, undefined, 'Separate attempt']
@@ -133,8 +133,8 @@ test('corrupt storage cannot overwrite the last displayed valid plan and can rec
   const saved = await backup(page);
   // Simulate external storage corruption, using storage only to inject the failure.
   await page.evaluate(() => {
-    window.validStoredPlan = localStorage.getItem('rillo-plan-v3');
-    localStorage.setItem('rillo-plan-v3', '{broken');
+    window.validStoredPlan = localStorage.getItem('rillo-plan-v4');
+    localStorage.setItem('rillo-plan-v4', '{broken');
   });
   await page.getByRole('button', { name: 'Retry saved plan' }).click();
   await expect(page.locator('#planError')).toContainText('could not be opened');
@@ -370,7 +370,7 @@ test('opening index directly still supports saving and reloading without a serve
   await page.reload();
   await expect(page.locator('#classList')).toContainText('MATH 071');
   const saved = await backup(page);
-  expect(saved.version).toBe(3);
+  expect(saved.version).toBe(4);
   expect(saved.classes[0].code).toBe('MATH 071');
 });
 
@@ -392,7 +392,7 @@ test('corrupt newest storage never silently loads an older legacy plan', async (
   await page.addInitScript(fixture => {
     if (!sessionStorage.getItem('seeded')) {
       localStorage.setItem('rillo-plan-v2', JSON.stringify(fixture));
-      localStorage.setItem('rillo-plan-v3', '{broken');
+      localStorage.setItem('rillo-plan-v4', '{broken');
       sessionStorage.setItem('seeded', 'yes');
     }
   }, legacyPlan());

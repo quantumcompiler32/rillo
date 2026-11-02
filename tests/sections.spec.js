@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+test.beforeEach(async ({ page }) => { page.on('pageerror', error => { throw error; }); });
 
 async function addPlan(page, { college = 'Mission College', term = 'Spring 2028', status = 'Planned' } = {}) {
   await page.getByRole('button', { name: 'Add class', exact: true }).click();
@@ -52,13 +53,15 @@ async function addOption(page, card, section, preference = 'None', status = 'Con
   await expect(form).toBeHidden();
 }
 
-test('options keep exact identifiers and independent preference/status across reload and restore', async ({ page }) => {
+test('options keep exact identifiers and independent preference/status across reload and restore', async ({ page }, testInfo) => {
   await page.goto('/');
   const card = await addPlan(page);
   await addOption(page, card, '00042', 'Preferred', 'Waitlisted');
   await addOption(page, card, '00043', 'Backup');
   await expect(card).toContainText('Preferred · Waitlisted');
   await expect(card).toContainText('Backup · Considering');
+  await card.screenshot({ path: testInfo.outputPath('section-options.png') });
+  expect((await card.boundingBox()).width).toBeLessThanOrEqual(page.viewportSize().width);
   await expect(card).toContainText('000123-A');
   await expect(card).toContainText('Planned');
   const saved = await backup(page);
@@ -95,4 +98,120 @@ test('editing an option preserves its identity and position while changing prefe
   const saved = await backup(page);
   expect(saved.classes).toEqual(before.classes);
   expect(saved.sectionOptions.map(o => o.status)).toEqual(['Waitlisted', 'Considering']);
+});
+
+test('removal retains linked plans/history and returns focus after deleting a considering option', async ({ page }) => {
+  await page.goto('/');
+  const card = await addPlan(page);
+  await addOption(page, card, '001', 'Preferred', 'Completed');
+  const saved = await backup(page);
+  await card.getByRole('button', { name: 'Remove', exact: true }).click();
+  await expect(page.locator('#planError')).toContainText('linked section options');
+  await card.getByRole('button', { name: 'Remove option', exact: true }).click();
+  await expect(page.locator('#planError')).toContainText('Retain waitlisted');
+  expect(await backup(page)).toEqual(saved);
+  await addOption(page, card, '002', 'Backup');
+  page.once('dialog', d => d.accept());
+  await card.getByRole('button', { name: 'Remove option', exact: true }).last().click();
+  await expect(card).not.toContainText('Section 002');
+  await expect(card.getByRole('button', { name: 'Add section option', exact: true })).toBeFocused();
+  expect(await backup(page)).toEqual(saved);
+  await page.reload();
+  await expect(page.locator('#classList')).toContainText('Preferred · Completed');
+});
+
+test('failed option saves and invalid backups preserve the whole plan and allow correction', async ({ page }) => {
+  await page.goto('/');
+  const card = await addPlan(page);
+  await addOption(page, card, '001', 'Preferred', 'Waitlisted');
+  const saved = await backup(page);
+  await card.getByRole('button', { name: 'Edit option', exact: true }).click();
+  const form = page.getByRole('dialog');
+  await form.getByLabel('Section identifier', { exact: true }).fill('009');
+  await page.evaluate(() => {
+    window.originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = () => { throw new DOMException('Storage full', 'QuotaExceededError'); };
+  });
+  await form.getByRole('button', { name: 'Save option', exact: true }).click();
+  await expect(form.getByRole('alert')).toContainText('not saved');
+  await expect(form.getByRole('alert')).toBeFocused();
+  await expect(form.locator('form')).toHaveAttribute('aria-describedby', 'optionFormError');
+  await expect(card).toContainText('Section 001');
+  await expect(form.getByLabel('Section identifier', { exact: true })).toHaveValue('009');
+  await page.evaluate(() => { Storage.prototype.setItem = window.originalSetItem; });
+  await form.getByRole('button', { name: 'Save option', exact: true }).click();
+  await expect(card).toContainText('Section 009');
+  await expect(card.getByRole('button', { name: 'Add section option', exact: true })).toBeFocused();
+  const corrected = await backup(page);
+  for (const mutate of [
+    p => { p.sectionOptions[0].plannedClassId = 'missing'; },
+    p => { p.sectionOptions[0].section = 9; },
+    p => { p.sectionOptions[0].preference = 'Enrolled'; },
+    p => { p.sectionOptions[0].status = 'Approved'; },
+    p => { p.sectionOptions.push({ ...p.sectionOptions[0] }); },
+    p => { p.sectionOptions.push({ ...p.sectionOptions[0], id: 'second-preferred' }); },
+    p => { p.classes = []; }
+  ]) {
+    const invalid = structuredClone(corrected);
+    mutate(invalid);
+    await restore(page, invalid);
+    await expect(page.locator('#planError')).toBeVisible();
+    expect(await backup(page)).toEqual(corrected);
+  }
+  await page.reload();
+  expect(await backup(page)).toEqual(corrected);
+});
+
+test('different colleges, terms, and attempts stay distinct; linked context cannot be reassigned', async ({ page }) => {
+  await page.goto('/');
+  await addPlan(page);
+  await addPlan(page);
+  await addPlan(page, { college: 'Example College' });
+  await addPlan(page, { term: 'Fall 2028', status: 'Withdrawn' });
+  const cards = page.locator('#classList > article');
+  const target = cards.filter({ hasText: 'Mission College · Spring 2028' }).first();
+  await addOption(page, target, '00001');
+  const before = await backup(page);
+  expect(before.classes).toHaveLength(4);
+  expect(new Set(before.classes.map(c => c.id)).size).toBe(4);
+  await target.getByRole('button', { name: 'Edit', exact: true }).click();
+  const form = page.getByRole('dialog');
+  await form.getByLabel('College', { exact: true }).fill('Other College');
+  await form.getByRole('button', { name: 'Save class', exact: true }).click();
+  await expect(form.getByRole('alert')).toContainText('linked section options');
+  await expect(form.getByRole('alert')).toBeFocused();
+  await form.getByRole('button', { name: 'Cancel', exact: true }).click();
+  expect(await backup(page)).toEqual(before);
+  page.once('dialog', d => d.accept());
+  await target.getByRole('button', { name: 'Remove option', exact: true }).click();
+  page.once('dialog', d => d.accept());
+  await target.getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.reload();
+  const after = await backup(page);
+  expect(after.classes).toEqual(before.classes.slice(1));
+  expect(after.sectionOptions).toEqual([]);
+  await expect(page.locator('#classList')).toContainText('Withdrawn');
+});
+
+test('version 3 plans migrate without inventing options or losing exact legacy information', async ({ page }) => {
+  const old = { version: 3, classes: [{ id: 'legacy', college: 'Mission College', term: 'Fall 2026', code: 'MATH 071', status: 'Registered', section: '00017', professor: 'Original Instructor', r40: 'Submitted only', notes: 'Keep this record', days: 'MW', time: '9 AM' }], registrations: [], deadlines: [], degrees: [], transfers: [] };
+  await page.addInitScript(value => {
+    if (!sessionStorage.getItem('seeded')) {
+      localStorage.setItem('rillo-plan-v3', JSON.stringify(value));
+      sessionStorage.setItem('seeded', 'yes');
+    }
+  }, old);
+  await page.goto('/');
+  const migrated = await backup(page);
+  expect(migrated.version).toBe(4);
+  expect(migrated.classes).toEqual(old.classes);
+  expect(migrated.sectionOptions).toEqual([]);
+  await addOption(page, page.locator('#classList > article'), '00018', 'Backup');
+  const saved = await backup(page);
+  expect(saved.classes).toEqual(old.classes);
+  await page.reload();
+  expect(await backup(page)).toEqual(saved);
+  await restore(page, saved);
+  await expect(page.locator('#toast')).toHaveText('Plan imported');
+  expect(await backup(page)).toEqual(saved);
 });

@@ -103,17 +103,14 @@ const RilloPlanStore = (() => {
     for (const field of collections) {
       if (Object.hasOwn(value, field) && !Array.isArray(value[field])) invalid(field, 'expected a list');
     }
-    // A previous release retained legacyDegrees alongside edited current goals.
-    // Current records win for the same stable ID; retain legacy goals absent from the current list.
+    // A present current list is authoritative, including an intentionally empty list.
+    // Stale legacy copies must not resurrect goals the student already removed.
     validate({ ...empty(), degrees: value.legacyDegrees ?? [] });
-    const degrees = [...(value.degrees ?? [])];
-    for (const goal of value.legacyDegrees ?? []) {
-      if (!degrees.some(current => current.id === goal.id)) degrees.push(goal);
-    }
+    const degrees = value.degrees ?? value.legacyDegrees ?? [];
     const migrated = { ...empty(), ...value, version: VERSION, degrees };
     delete migrated.legacyDegrees;
     // Preserve legacy free-text schedules. They do not establish structured dates or form coverage.
-    if (Array.isArray(migrated.classes)) migrated.classes = migrated.classes.map(c => ({ ...c, name: c.name ?? '', meetingDays: c.meetingDays ?? [] }));
+    if (Array.isArray(migrated.classes)) migrated.classes = migrated.classes.map(c => ({ ...c, name: c.name === undefined ? '' : c.name, meetingDays: c.meetingDays === undefined ? [] : c.meetingDays }));
     return validate(migrated);
   }
   function load() {

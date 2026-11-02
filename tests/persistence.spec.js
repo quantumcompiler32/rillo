@@ -32,7 +32,7 @@ async function restore(page, value, accept = true) {
   });
 }
 
-test('a failed save keeps the existing plan and the edited form available for retry', async ({ page }) => {
+test('a failed save keeps the existing plan and the edited form available for retry', async ({ page }, testInfo) => {
   await page.goto('/');
   await (await addClass(page)).getByRole('button', { name: 'Save class', exact: true }).click();
   // Fault injection at the browser storage boundary, not the plan implementation.
@@ -45,6 +45,7 @@ test('a failed save keeps the existing plan and the edited form available for re
   await expect(form).toBeVisible();
   await expect(form.getByRole('alert')).toContainText('not saved');
   await expect(form.getByRole('alert')).toBeFocused();
+  await page.screenshot({ path: testInfo.outputPath('failed-save.png') });
   await page.evaluate(() => { Storage.prototype.setItem = window.originalSetItem; });
   await form.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page.locator('#classList')).not.toContainText('PHYS 004A');
@@ -152,19 +153,22 @@ test('corrupt storage cannot overwrite the last displayed valid plan and can rec
   expect(await backup(page)).toEqual(saved);
 });
 
-test('legacy and current degree collections preserve unique goals during migration', async ({ page }) => {
+test('current degree goals remain authoritative over stale legacy copies', async ({ page }) => {
   await page.goto('/');
+  for (const current of [legacyPlan().degrees, []]) {
+    const old = legacyPlan();
+    old.degrees = current;
+    old.legacyDegrees = [{ ...legacyPlan().degrees[0], id: 'deleted-physics', name: 'Deleted Physics goal' }];
+    await restore(page, old);
+    await expect(page.locator('#toast')).toHaveText('Plan imported');
+    expect((await backup(page)).degrees).toEqual(current);
+  }
   const old = legacyPlan();
-  old.legacyDegrees = [
-    { ...old.degrees[0], name: 'Old name for same goal' },
-    { ...old.degrees[0], id: 'legacy-physics', name: 'Physics' }
-  ];
+  old.legacyDegrees = old.degrees;
+  delete old.degrees;
   await restore(page, old);
   await expect(page.locator('#toast')).toHaveText('Plan imported');
-  const saved = await backup(page);
-  expect(saved.degrees.map(d => [d.id, d.name])).toEqual([
-    ['degree-1', 'Mathematics'], ['legacy-physics', 'Physics']
-  ]);
+  expect((await backup(page)).degrees).toEqual(old.legacyDegrees);
 });
 
 const invalidBackups = [
@@ -368,4 +372,39 @@ test('opening index directly still supports saving and reloading without a serve
   const saved = await backup(page);
   expect(saved.version).toBe(3);
   expect(saved.classes[0].code).toBe('MATH 071');
+});
+
+for (const field of ['name', 'meetingDays']) {
+  test(`reject explicitly null legacy ${field} rather than repairing it silently`, async ({ page }) => {
+    await page.goto('/');
+    await (await addClass(page)).getByRole('button', { name: 'Save class', exact: true }).click();
+    const saved = await backup(page);
+    const invalid = legacyPlan();
+    invalid.classes[0][field] = null;
+    await restore(page, invalid);
+    await expect(page.locator('#planError')).toContainText(field);
+    await page.reload();
+    expect(await backup(page)).toEqual(saved);
+  });
+}
+
+test('corrupt newest storage never silently loads an older legacy plan', async ({ page }) => {
+  await page.addInitScript(fixture => {
+    if (!sessionStorage.getItem('seeded')) {
+      localStorage.setItem('rillo-plan-v2', JSON.stringify(fixture));
+      localStorage.setItem('rillo-plan-v3', '{broken');
+      sessionStorage.setItem('seeded', 'yes');
+    }
+  }, legacyPlan());
+  await page.goto('/');
+  await expect(page.locator('#planError')).toContainText('could not be opened');
+  await expect(page.locator('#classList')).not.toContainText('Keep this attempt');
+  await (await addClass(page, 'PHYS 004A')).getByRole('button', { name: 'Save class', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Recover your saved plan');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.reload();
+  await expect(page.locator('#planError')).toContainText('could not be opened');
+  await restore(page, legacyPlan());
+  await expect(page.locator('#toast')).toHaveText('Plan imported');
+  await expect(page.locator('#classList')).toContainText('Keep this attempt');
 });

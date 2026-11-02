@@ -16,7 +16,7 @@ New saves/backups use explicit version 3 and the `rillo-plan-v3` key. Existing c
 
 Version 1 and 2 backups migrate in memory. Historical on-device versionless data is accepted only at its known v1/v2 key. The newest present key wins; invalid newer data does not silently fall back to stale legacy data. Original legacy keys remain untouched. The first successful edit/restore saves v3; repeated reloads do not re-migrate or duplicate its records.
 
-Preserve legacy `r40`, free-text `days`/`time`, notes, exact section identifiers including leading zeros, statuses, goals, and deadlines. Missing structured meeting days become an empty list, not an inferred schedule. Legacy form text retains its recorded meaning: no course/section coverage, readiness, eligibility, or enrollment links are invented. Where both `degrees` and `legacyDegrees` exist, current records win for the same ID and additional unique legacy goals survive.
+Preserve legacy `r40`, free-text `days`/`time`, notes, exact section identifiers including leading zeros, statuses, goals, and deadlines. Missing structured meeting days become an empty list, not an inferred schedule. Legacy form text retains its recorded meaning: no course/section coverage, readiness, eligibility, or enrollment links are invented. Where `degrees` is present it remains authoritative, including an empty list, so stale `legacyDegrees` copies cannot resurrect intentionally removed goals. Use `legacyDegrees` only when the current list is absent.
 
 ## Validation and future relationships
 

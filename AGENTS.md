@@ -15,3 +15,7 @@ Use the five default triage roles. See `docs/agents/triage-labels.md`.
 ### Domain docs
 
 This is a single-context repo. Read `CONTEXT.md` and relevant ADRs in `docs/adr/` when present. See `docs/agents/domain.md`.
+
+## Commits
+
+When building Rillo, make frequent, small commits at meaningful, reviewable milestones rather than bundling the work into one large commit. Keep unrelated changes separate, validate each milestone as appropriate, and do not include pre-existing user changes without authorization.
